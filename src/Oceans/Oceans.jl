@@ -42,7 +42,7 @@ using ..EarthSystemModels: EarthSystemModels,
                            DegreesKelvin,
                            default_stop_time,
                            heat_capacity
-using ..EarthSystemModels.InterfaceComputations: InterfaceComputations, ComponentExchanger, state2dindex
+using ..EarthSystemModels.InterfaceComputations: InterfaceComputations, ComponentExchanger, state2dindex, interface_kernel_parameters
 
 default_gravitational_acceleration = Oceananigans.defaults.gravitational_acceleration
 default_planet_rotation_rate = Oceananigans.defaults.planet_rotation_rate
@@ -112,7 +112,7 @@ function EarthSystemModels.interpolate_state!(exchanger, grid, ocean::Simulation
     Sᵒᶜ = ocean.model.tracers.S
     kᴺ = size(ocean.model.grid, 3)
     arch = architecture(ocean.model.grid)
-    launch!(arch, grid, :xy, _ocean_state_to_potential_temperature!, Tᵉˣ, Tᵒᶜ, Sᵒᶜ, kᴺ)
+    launch!(arch, grid, interface_kernel_parameters(grid), _ocean_state_to_potential_temperature!, Tᵉˣ, Tᵒᶜ, Sᵒᶜ, kᴺ)
     return nothing
 end
 
