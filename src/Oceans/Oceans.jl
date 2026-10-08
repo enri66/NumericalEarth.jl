@@ -16,6 +16,7 @@ using Oceananigans.BoundaryConditions: DefaultBoundaryCondition, DiscreteBoundar
                                        IMEXFluxBoundaryCondition, IMEXFlux, TidalHarmonics, getbc
 using Oceananigans.BuoyancyFormulations: BuoyancyForce, SeawaterBuoyancy
 using Oceananigans.Coriolis: HydrostaticSphericalCoriolis
+using Oceananigans.DistributedComputations: synchronize_communication!
 using Oceananigans.Fields: Field, CenterField, set!, interior
 using Oceananigans.Forcings: MultipleForcings, DiscreteForcing
 using Oceananigans.Grids: Grids, inactive_node, Face, Center, xspacings, yspacings, znodes, RectilinearGrid
@@ -112,6 +113,7 @@ function EarthSystemModels.interpolate_state!(exchanger, grid, ocean::Simulation
     Sᵒᶜ = ocean.model.tracers.S
     kᴺ = size(ocean.model.grid, 3)
     arch = architecture(ocean.model.grid)
+    foreach(synchronize_communication!, (Tᵒᶜ, Sᵒᶜ, ocean.model.velocities.u, ocean.model.velocities.v))
     launch!(arch, grid, interface_kernel_parameters(grid), _ocean_state_to_potential_temperature!, Tᵉˣ, Tᵒᶜ, Sᵒᶜ, kᴺ)
     return nothing
 end
