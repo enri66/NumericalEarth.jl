@@ -231,7 +231,11 @@ function Oceananigans.Fields.Field(metadata::Metadatum, arch=CPU();
 
     if !isnothing(inpainting)
         inpainted_path = inpainted_metadata_path(metadata)
-        if isfile(inpainted_path)
+        cached = isfile(inpainted_path)
+        # Every rank reaches the `@root` that writes the cache, or none does: no rank may write it
+        # before all ranks have looked for it
+        @root nothing
+        if cached
             # apply a load guard for corrupted files
             loaded = false
             try
