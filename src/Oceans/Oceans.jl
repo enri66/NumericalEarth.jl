@@ -113,7 +113,10 @@ function EarthSystemModels.interpolate_state!(exchanger, grid, ocean::Simulation
     Sᵒᶜ = ocean.model.tracers.S
     kᴺ = size(ocean.model.grid, 3)
     arch = architecture(ocean.model.grid)
-    foreach(synchronize_communication!, (Tᵒᶜ, Sᵒᶜ, ocean.model.velocities.u, ocean.model.velocities.v))
+    # The tracer halo exchange started by the ocean's `update_state!` may still be in flight. The velocity halos are
+    # complete: synchronizing them again would unpack the receive buffers over the barotropic correction of the halos.
+    synchronize_communication!(Tᵒᶜ)
+    synchronize_communication!(Sᵒᶜ)
     launch!(arch, grid, interface_kernel_parameters(grid), _ocean_state_to_potential_temperature!, Tᵉˣ, Tᵒᶜ, Sᵒᶜ, kᴺ)
     return nothing
 end
