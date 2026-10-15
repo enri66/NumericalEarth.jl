@@ -1,6 +1,6 @@
 module GLORYS
 
-export GLORYSStatic, GLORYSDaily, GLORYSMonthly
+export GLORYSStatic, GLORYSDaily, GLORYSMonthly, CopernicusBGCStatic, CopernicusBGCDaily, CopernicusBGCMonthly
 
 using Dates: DateTime, Day, Month
 using Oceananigans.Fields: Center
@@ -42,6 +42,8 @@ dataset_name(::GLORYSStatic) = "GLORYSStatic"
 dataset_name(::GLORYSDaily) = "GLORYSDaily"
 dataset_name(::GLORYSMonthly) = "GLORYSMonthly"
 
+include("copernicus_bgc.jl")
+
 Base.size(::GLORYSDataset, variable) = (4320, 2040, 50)
 
 all_dates(::GLORYSStatic, var) = [nothing]
@@ -50,10 +52,11 @@ all_dates(::GLORYSMonthly, var) = range(DateTime("1993-01-01"), stop=DateTime("2
 
 # `P1D-m` is a one-day mean, and Copernicus Marine stamps the start of an averaging period rather
 # than its center: its monthly means for July 2010 carry 2010-07-01.
-DataWrangling.averaging_window(metadatum::Metadatum{<:GLORYSDaily}) =
+DataWrangling.averaging_window(metadatum::Metadatum{<:Union{GLORYSDaily, CopernicusBGCDaily}}) =
     (metadatum.dates, metadatum.dates + Day(1))
 
-DataWrangling.averaging_window(metadatum::Metadatum{<:GLORYSMonthly}) = DataWrangling.calendar_month_window(metadatum)
+DataWrangling.averaging_window(metadatum::Metadatum{<:Union{GLORYSMonthly, CopernicusBGCMonthly}}) =
+    DataWrangling.calendar_month_window(metadatum)
 
 copernicusmarine_dataset_id(::GLORYSStatic) = "cmems_mod_glo_phy_my_0.083deg_static"
 copernicusmarine_dataset_id(::GLORYSDaily) = "cmems_mod_glo_phy_my_0.083deg_P1D-m"
@@ -62,10 +65,10 @@ copernicusmarine_dataset_id(::GLORYSMonthly) = "cmems_mod_glo_phy_my_0.083deg_P1
 struct CMEMSHourlyAnalysis <: GLORYSDataset end
 copernicusmarine_dataset_id(::CMEMSHourlyAnalysis) = "cmems_mod_glo_phy_anfc_0.083deg_PT1H-m"
 
+native_horizontal_resolution(::GLORYSDataset) = 1 / 12
+
 const GLORYSMetadata{D} = Metadata{<:GLORYSDataset, D}
 const GLORYSMetadatum = Metadatum{<:GLORYSDataset}
-
-Base.size(::GLORYSMetadatum) = (4320, 2040, 50, 1)
 
 reversed_vertical_axis(::GLORYSDataset) = true
 
@@ -89,7 +92,7 @@ end_date_str(date) = string(date)
 start_date_str(dates::AbstractVector) = first(dates) |> string
 end_date_str(dates::AbstractVector) = last(dates) |> string
 
-dataset_variable_name(metadata::GLORYSMetadata) = GLORYS_dataset_variable_names[metadata.name]
+dataset_variable_name(metadata::GLORYSMetadata) = available_variables(metadata.dataset)[metadata.name]
 
 bbox_strs(::Nothing) = "_nothing", "_nothing"
 bbox_strs(c::Number) = @sprintf("_%.1f", c), @sprintf("_%.1f", c)
@@ -113,7 +116,7 @@ function region_suffix(region)
 end
 
 function metadata_prefix(dataset::GLORYSDataset, name, date, region)
-    var = GLORYS_dataset_variable_names[name]
+    var = available_variables(dataset)[name]
     ds = dataset_name(dataset)
     start_date = start_date_str(date)
     end_date = end_date_str(date)
@@ -133,7 +136,8 @@ DataWrangling.inpainted_metadata_filename(metadata::GLORYSMetadatum) =
     string(metadata_prefix(metadata.dataset, metadata.name, metadata.dates, metadata.region), "_inpainted.jld2")
 
 const GLORYS_surface_variables = (:free_surface, :sea_ice_thickness, :sea_ice_concentration,
-                                   :sea_ice_u_velocity, :sea_ice_v_velocity)
+                                   :sea_ice_u_velocity, :sea_ice_v_velocity,
+                                   :carbon_dioxide_partial_pressure)
 
 function dataset_location(::GLORYSDataset, name)
     name ∈ GLORYS_surface_variables && return (Center, Center, Nothing)

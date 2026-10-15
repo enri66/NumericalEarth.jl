@@ -86,6 +86,7 @@ jobs:
                      test_copernicus_albedo_downloading
                      test_copernicus_dem_downloading
                      test_glorys_downloading
+                     test_copernicus_bgc_downloading
                      test_aviso_downloading
                      test_globfp3d_downloading
                      test_ghsl_downloading

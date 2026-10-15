@@ -25,7 +25,7 @@ end
 
 function native_horizontal_resolution(dataset)
     if dataset isa GLORYS.GLORYSDataset
-        return 1 / 12
+        return GLORYS.native_horizontal_resolution(dataset)
     elseif dataset isa AVISO.AVISODataset
         return AVISO.native_horizontal_resolution(dataset)
     end
@@ -60,7 +60,8 @@ function Downloads.download(meta::CopernicusMetadatum;
     version_kw = meta.dataset isa AVISO.AVISODataset ?
                  (; dataset_version = AVISO.copernicusmarine_dataset_version(meta.dataset)) :
                  NamedTuple()
-    datetime_kw = if meta.dataset isa GLORYS.GLORYSStatic
+    part_kw = meta.dataset isa GLORYS.CopernicusBGCStatic ? (; dataset_part = "mask") : NamedTuple()
+    datetime_kw = if meta.dataset isa Union{GLORYS.GLORYSStatic, GLORYS.CopernicusBGCStatic}
         NamedTuple()
     else
         start_datetime = GLORYS.start_date_str(meta.dates)
@@ -92,7 +93,7 @@ function Downloads.download(meta::CopernicusMetadatum;
     end
 
     additional_kw = NamedTuple(name => value for (name, value) in additional_kw)
-    kw = merge(kw, version_kw, datetime_kw, lon_kw, lat_kw, z_kw, additional_kw)
+    kw = merge(kw, version_kw, part_kw, datetime_kw, lon_kw, lat_kw, z_kw, additional_kw)
 
     @root CopernicusMarine.subset(; kw...)
 
