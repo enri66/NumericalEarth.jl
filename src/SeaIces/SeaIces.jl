@@ -11,7 +11,7 @@ using Oceananigans.Models.HydrostaticFreeSurfaceModels: HydrostaticFreeSurfaceMo
 using Oceananigans.Operators: ℑxᶠᵃᵃ, ℑyᵃᶠᵃ
 using Oceananigans.OrthogonalSphericalShellGrids: OrthogonalSphericalShellGrids
 using Oceananigans.Simulations: Simulation
-using Oceananigans.TimeSteppers: Clock
+using Oceananigans.TimeSteppers: Clock, update_state!
 using Oceananigans.Units: minutes
 using Oceananigans.Utils: launch!
 using KernelAbstractions: @kernel, @index
@@ -33,6 +33,9 @@ EarthSystemModels.is_ocean_component(::Simulation{<:SeaIceModel}) = false
 # When using an ClimaSeaIce simulation, we assume that the exchange grid is the sea-ice grid
 EarthSystemModels.interpolate_state!(exchanger, grid, ::Simulation{<:SeaIceModel},       coupled_model) = nothing
 EarthSystemModels.interpolate_state!(exchanger, grid, ::FreezingLimitedOceanTemperature, coupled_model) = nothing
+
+# The interface fluxes read the ice fields in the halos, which `update_state!` fills
+Oceananigans.initialize!(::ComponentExchanger, grid, sea_ice::Simulation{<:SeaIceModel}) = update_state!(sea_ice.model)
 
 # ComponentExchangers
 InterfaceComputations.ComponentExchanger(sea_ice::FreezingLimitedOceanTemperature, grid) = nothing
