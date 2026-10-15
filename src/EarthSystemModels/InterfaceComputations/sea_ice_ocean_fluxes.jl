@@ -2,6 +2,8 @@ using Oceananigans.Operators: Δzᶜᶜᶜ
 using ClimaSeaIce.SeaIceThermodynamics: melting_temperature
 using ClimaSeaIce.SeaIceDynamics: implicit_τx_coefficient, implicit_τy_coefficient
 
+using Oceananigans.TimeSteppers: update_state!
+
 using ..EarthSystemModels: ocean_temperature, ocean_salinity
 
 """
@@ -72,6 +74,9 @@ function compute_sea_ice_ocean_fluxes!(interface, ocean, sea_ice, ocean_properti
             flux_formulation, fluxes, Tˢⁱ, Sˢⁱ, grid, clock,
             hˢⁱ, hc, ℵ, Sⁱ, Tᵒᶜ, Sᵒᶜ, uˢⁱ, vˢⁱ, τₛ,
             liquidus, ocean_properties, L, Δt, mass_fluxes.ice, mass_fluxes.snow)
+
+    # Recompute the ocean's auxiliary state from the adjusted temperature
+    update_state!(ocean.model)
 
     return nothing
 end
