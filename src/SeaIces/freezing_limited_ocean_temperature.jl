@@ -89,9 +89,6 @@ function InterfaceComputations.compute_sea_ice_ocean_fluxes!(cm::FreezingLimited
 
     launch!(arch, grid, :xy, _freeze_ocean_temperature!, 𝒬ᶠʳᶻ, Tᵒᶜ, Sᵒᶜ, liquidus, grid, ρᵒᶜ, cᵒᶜ, Δt_frazil)
 
-    # Recompute the ocean's auxiliary state from the adjusted temperature
-    update_state!(ocean.model)
-
     return nothing
 end
 
