@@ -8,7 +8,8 @@ using Dates
 using NumericalEarth.DataWrangling: metadata_path, inpainted_metadata_path, NearestNeighborInpainting
 using NumericalEarth.DataWrangling.ORCA: ORCAOne
 using Oceananigans.DistributedComputations
-using Oceananigans.DistributedComputations: all_reduce, concatenate_local_sizes, local_size, reconstruct_global_grid
+using Oceananigans.DistributedComputations: all_reduce, concatenate_local_sizes, local_size, reconstruct_global_grid, synchronize_communication!,
+                                           cpu_architecture
 using Oceananigans.Grids: Sides, Closed
 using Oceananigans.Operators: Azᶜᶜᶜ
 using NumericalEarth.Lands: build_flux_routing
@@ -152,6 +153,47 @@ end
     fresh  = Field(metadatum; inpainting, cache_inpainted_data = false)
     @test interior(cached) == interior(fresh)
     MPI.Barrier(MPI.COMM_WORLD)    # the directory goes when rank 0 exits
+end
+
+function ocean_sea_ice_model(grid)
+    ocean = ocean_simulation(grid; closure = nothing, Δt = 60, free_surface = SplitExplicitFreeSurface(grid; substeps = 20))
+    set!(ocean.model, T = (λ, φ, z) -> -2.5 + 0.1λ, S = 34, u = 0.1)
+
+    sea_ice = sea_ice_simulation(grid, ocean; dynamics = nothing)
+    patch(λ, φ) = exp(-(λ - 10)^2 - (φ - 55)^2)
+    set!(sea_ice.model, h = patch, ℵ = (λ, φ) -> min(1, 1.2patch(λ, φ)))
+
+    atmosphere_grid = LatitudeLongitudeGrid(size = (24, 14), longitude = (-1, 23), latitude = (49, 63),
+                                            topology = (Bounded, Bounded, Flat))
+    atmosphere = PrescribedAtmosphere(atmosphere_grid, [0.0, 86400.0])
+    for n in 1:2
+        set!(atmosphere.velocities.u[n], 10)
+        set!(atmosphere.velocities.v[n], -5)
+        set!(atmosphere.temperature[n], 253)
+    end
+
+    return OceanSeaIceModel(ocean, sea_ice; atmosphere, radiation = PrescribedRadiation(atmosphere_grid))
+end
+
+ocean_sea_ice_grid(arch) = LatitudeLongitudeGrid(arch; size = (80, 80, 4), longitude = (0, 20), latitude = (50, 60),
+                                                 z = (-100, 0), halo = (7, 7, 7))
+
+# The part of a serial field held by the rank that holds `field`
+rank_window(serial, field) = Oceananigans.DistributedComputations.partition(interior(serial),
+                                                                            cpu_architecture(field.grid.architecture),
+                                                                            size(interior(field)))
+
+# A supercooled ocean under an ice patch that crosses the rank edges
+@testset "Distributed ocean-sea ice initial fluxes" begin
+    serial = ocean_sea_ice_model(ocean_sea_ice_grid(CPU()))
+    τˢ = serial.interfaces.net_fluxes.ocean
+
+    for partition in (Partition(4, 1), Partition(1, 4), Partition(2, 2))
+        model = ocean_sea_ice_model(ocean_sea_ice_grid(Distributed(CPU(); partition)))
+        τ = model.interfaces.net_fluxes.ocean
+        @test interior(τ.u) == rank_window(τˢ.u, τ.u)
+        @test interior(τ.v) == rank_window(τˢ.v, τ.v)
+    end
 end
 
 # Every rank regularizes the west boundary condition, but only the westmost ranks keep it, so a source
