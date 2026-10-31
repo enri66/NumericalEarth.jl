@@ -9,12 +9,14 @@ using NumericalEarth.DataWrangling: metadata_path, inpainted_metadata_path, Near
 using NumericalEarth.DataWrangling.ORCA: ORCAOne
 using Oceananigans.DistributedComputations
 using Oceananigans.DistributedComputations: all_reduce, concatenate_local_sizes, local_size, reconstruct_global_grid, synchronize_communication!,
-                                           cpu_architecture
+                                           cpu_architecture, reconstruct_global_field
 using Oceananigans.Grids: Sides, Closed
 using Oceananigans.Operators: Azᶜᶜᶜ
 using NumericalEarth.Lands: build_flux_routing
 using NumericalEarth.Oceans: river_mouth_vertical_diffusivity
 using SeawaterPolynomials.TEOS10: θ_from_Θ
+using NumericalEarth.SeaIces: sea_ice_dynamics
+using ClimaSeaIce.SeaIceDynamics: SplitExplicitSolver
 using Oceananigans.BoundaryConditions: regularize_boundary_condition, LeftBoundary
 using Oceananigans.Grids: topology
 
@@ -155,11 +157,12 @@ end
     MPI.Barrier(MPI.COMM_WORLD)    # the directory goes when rank 0 exits
 end
 
-function ocean_sea_ice_model(grid)
+function ocean_sea_ice_model(grid; dynamics = false)
     ocean = ocean_simulation(grid; closure = nothing, Δt = 60, free_surface = SplitExplicitFreeSurface(grid; substeps = 20))
     set!(ocean.model, T = (λ, φ, z) -> -2.5 + 0.1λ, S = 34, u = 0.1)
 
-    sea_ice = sea_ice_simulation(grid, ocean; dynamics = nothing)
+    ice_dynamics = dynamics ? sea_ice_dynamics(grid, ocean; solver = SplitExplicitSolver(grid; substeps = 8)) : nothing
+    sea_ice = sea_ice_simulation(grid, ocean; dynamics = ice_dynamics)
     patch(λ, φ) = exp(-(λ - 10)^2 - (φ - 55)^2)
     set!(sea_ice.model, h = patch, ℵ = (λ, φ) -> min(1, 1.2patch(λ, φ)))
 
@@ -193,6 +196,22 @@ rank_window(serial, field) = Oceananigans.DistributedComputations.partition(inte
         τ = model.interfaces.net_fluxes.ocean
         @test interior(τ.u) == rank_window(τˢ.u, τ.u)
         @test interior(τ.v) == rank_window(τˢ.v, τ.v)
+    end
+end
+
+# The ice-ocean drag coefficients on the velocity faces off the walls, with elasto-visco-plastic sea-ice dynamics
+@testset "Distributed ice-ocean drag" begin
+    serial = ocean_sea_ice_model(ocean_sea_ice_grid(CPU()); dynamics = true)
+    λˣˢ = interior(serial.interfaces.sea_ice_ocean_interface.fluxes.x_momentum_coefficient)
+    λʸˢ = interior(serial.interfaces.sea_ice_ocean_interface.fluxes.y_momentum_coefficient)
+
+    for partition in (Partition(4, 1), Partition(1, 4), Partition(2, 2))
+        model = ocean_sea_ice_model(ocean_sea_ice_grid(Distributed(CPU(); partition)); dynamics = true)
+        fluxes = model.interfaces.sea_ice_ocean_interface.fluxes
+        λˣ = interior(reconstruct_global_field(fluxes.x_momentum_coefficient))
+        λʸ = interior(reconstruct_global_field(fluxes.y_momentum_coefficient))
+        @test λˣ[2:end-1, :, :] == λˣˢ[2:end-1, :, :]
+        @test λʸ[:, 2:end-1, :] == λʸˢ[:, 2:end-1, :]
     end
 end
 
